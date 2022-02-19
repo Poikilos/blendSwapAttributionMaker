@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
@@ -23,7 +23,23 @@
   var checkTimer = null;
   var dateTagName = "li";
   var submittedDateGrandParentClassName = "sticky-top";
-  var authorAncestorClassName = "field-name-author-submitter"; // this div's children[1].firstChild.firstChild.firstChild is the author element
+  // var authorAncestorClassName = "field-name-author-submitter"; // this div's children[1].firstChild.firstChild.firstChild is the author element
+  var authorAncestorClassName = null;
+  var authorClassName = "list-group-item";
+  // blendswap.com:
+  /*
+  ```
+  <li class="list-group-item">
+  ```
+
+  then many spaces, "\n", many more spaces, then:
+
+  ```
+  Creator: <a href="/profile/918677">fatacuciocolata</a>
+  ```
+
+  (there is a newline after "Creator:" too)
+  */
 
   // var madeDivClassName = "username"; // <span class='username'> (may or may not contain <a>)
   var madeSpanClassName = "username"; // <li class="list-group-item"><i class="far fa-user" style="color:#ae3ec9;margin-right: 0.25rem;"></i>Creator: <a href="/profile/918677">fatacuciocolata</a></li>
@@ -1102,6 +1118,25 @@
         alert("Error in " + myName + ": The license was not detected.");
       }
       var markdownStr = getMarkdown(info);
+      var nyiMsg = "";
+      if (!info.blenderVersion) nyiMsg += "\n- Blender Version: "; // get list-group-item with textContent "Blender " // followed by version
+      if (!info.renderer) nyiMsg += "\n- Render: "; // get list-group-item with textContent "Render: " // followed by renderer
+      if (!info.authorE || info.authorE.textContent.trim().length < 2) {
+        nyiMsg += "\n- Author: ";
+      }
+      if (!info.title || info.title.trim().length < 2) {
+        nyiMsg += "\n- Title: ";
+      }
+      if (!info.licenses || info.licenses.length < 1) {
+        nyiMsg += "\n- License: ";
+      }
+      info.licenses
+      if (!info.description) nyiMsg += "\n\n\n## Description";
+      if (nyiMsg.length > 0) {
+        // markdownStr = "\nError in " + myName + ": NotYetImplemented: " + nyiMsg + "\n\n\n" + markdownStr;
+        markdownStr += "\n\nError in " + myName + ": Everything below is NotYetImplemented so you'll have to copy it manually.\n\n" + nyiMsg + "\n";
+      }
+
       setClipboardText(markdownStr, btn);
     }); // end addEventListener click
     // pageInfoE.appendChild(btn); // Append <button> for Markdown to whatever element was selected.
