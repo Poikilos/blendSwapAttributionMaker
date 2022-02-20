@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.1
+// @version      1.0.2
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
@@ -10,6 +10,7 @@
 // ==/UserScript==
 
 (function() {
+  // based on openGameArtAttributionMaker (same author)
   var myName = "Blend Swap Attribution Maker";
   var verbose = true;
 /*
@@ -24,8 +25,19 @@
   var dateTagName = "li";
   var submittedDateGrandParentClassName = "sticky-top";
   // var authorAncestorClassName = "field-name-author-submitter"; // this div's children[1].firstChild.firstChild.firstChild is the author element
-  var authorAncestorClassName = null;
+  var authorAncestorClassName = null; // set to null to not search for it; otherwise requires authorGreatUncleFlag
+  var authorGreatUncleFlag = "Author:"; // such as opengameart (this tag's sibling's first grandchild is the author)
+  var authorParentTag = "li";
+  var authorTag = "a";
+  var authorParentFlag = "Creator:";
   var authorClassName = "list-group-item";
+  var authorHrefBaseUrl = "https://www.blendswap.com"; // such as for blendswap.com: Creator: <a href="/profile/918677">fatacuciocolata</a>
+  var programVersionTag = "li";
+  var programVersionFlag = "Blender ";
+  var programVersionTerm = "Blender"; // Display this term for the information that was originally after programVersionFlag.
+  var mediumTag = "li";
+  var mediumFlag = "Render: ";
+  var mediumTerm = "Render"; // Display this term for the information that was originally after mediumFlag.
   // blendswap.com:
   /*
   ```
@@ -47,13 +59,14 @@
   // ^ where other usernames may appear but the container span rel="sioc:has_creator" is unique.
   //var licenseClauseImgPrefix = "License__img";
   //var licenseAnchorPrefix = "License__link";
+  var descriptionTag = "div";
   var descriptionClassName = "card-body blend-description";
   var buttonContainerClassName = "card sticky-top";  // The first card-body says "Must be logged in" in it which may be confuse users (make them think this script is saying that).
 
   // Find the URL and name such as in `<div class='license-icon'><a href='http://creativecommons.org/publicdomain/zero/1.0/' target='_blank'><img src='https://opengameart.org/sites/default/files/license_images/cc0.png' alt='' title=''><div class='license-name'>CC0`:
   var licenseAContainerClass = "list-group-item";
   var licenseNameClass = "license-name";
-  var collaboratorsClassName = "field-name-field-collaborators";
+  var collaboratorsClassName = null;
 
   // var titlePrefix = "ThingPage__modelName";
   // var headingCreatedPrefix = "ThingPage__createdBy";
@@ -61,7 +74,7 @@
   // var doneDivPrefixes = [madeDivClassName];
   // ^ This is only necessary when the page has lazy loading.
   // var clausesContainerPrefix = "License__ccLicense";
-  var tagHrefContains = "field_art_tags_tid=";
+  var tagHrefContains = "/blends/tag/";
   // var doneDivPrefixesMain = [clausesContainerPrefix];
   var doneClasses = [descriptionClassName];
   var blendSwapNames = {
@@ -176,7 +189,37 @@
     }
     return els;
   }
-
+  function getElementsWhereTextContentTrimStartsWith(tagName, str) {
+    if (verbose) {
+      // console.log("");
+      console.log("\ngetElementsWhereTextContentTrimStartsWith(\""+str+"\")...");
+    }
+    var els = [];
+    var all = document.getElementsByTagName(tagName);
+    if (verbose) {
+      console.log("- " + all.length + " total...");
+    }
+    for (var i=0, max=all.length; i < max; i++) {
+      var el = all[i];
+      if (el.className == undefined) continue;
+      else if (typeof (el.className) != "string") {
+        // className type can be svg or path as opposed to string (WARNING:
+        // `<i` becomes `<svg` in FontAwesome!!)
+        if (verbose) {
+          if (tagName != "*") {
+              console.log("- WARNING: typeof el.className is " + (typeof (el.className)) + " for tagName " + el.tagName)
+          }
+        }
+      }
+      else if (el.textContent && el.textContent.trim().startsWith(str)) {
+        els.push(el);
+      }
+    }
+    if (verbose) {
+      console.log("- FOUND " + els.length + " (" + all.length + " total)");
+    }
+    return els;
+  }
   function getElementsWhereClassStartsWith(str) {
     return getElementsByTagWhereClassStartsWith("*", str);
   }
@@ -500,6 +543,13 @@
     else {
       outputStr += "\nLICENSE: [insert license name (&URL unless in each content ZIP) from the original here]\n";
     }
+
+    if (programVersionTerm in info) {
+      outputStr += "\n" + programVersionTerm + ": " + info[programVersionTerm] + "\n";
+    }
+    if (mediumTerm in info) {
+      outputStr += "\n" + mediumTerm + ": " + info[mediumTerm] + "\n";
+    }
     var tagAnchors = getAnchorsWhereHrefContains(tagHrefContains);
     var tai;
     if (tagAnchors.length > 0) {
@@ -515,7 +565,11 @@
     }
 
     if (info.attributionNotice) {
-      outputStr += "\n## " + info.goodAttributionNoticeFlag + "\n" + info.attributionNotice + "\n";
+      outputStr += "\n\n## " + info.goodAttributionNoticeFlag + "\n" + info.attributionNotice + "\n";
+    }
+
+    if (info.description) {
+      outputStr += "\n\n## Description\n" + info.description + "\n";
     }
 
     return outputStr;
@@ -759,104 +813,160 @@
       console.warn("The title is missing. There are no divs with a class starting with " + titlePrefix);
     }
 
-    var authorAndSubmitterDivs = document.getElementsByClassName(authorAncestorClassName);
-    var collaboratorElements = [];
-    if (authorAndSubmitterDivs.length > 0) {
-      var goodAuthorFlag = "Author:";
-      if (!authorAndSubmitterDivs[0].children[0].textContent.includes(goodAuthorFlag)) {
-        console.warn("The first child of div class " + authorAncestorClassName + " should include \"" + goodAuthorFlag + "\" but is \"" + authorAndSubmitterDivs[0].children[0].textContent + "\"");
-      }
-      var authorE = authorAndSubmitterDivs[0].children[1].firstChild.firstChild.firstChild;
-      // ^ such as on opengameart: <div class="field field-name-author-submitter field-type-ds field-label-above">
-      //             <div class="field-label">Author:&nbsp;</div>
-      //             <div class="field-items">              <!--children[1]-->
-      //               <div class="field-item even">        <!--.firstChild-->
-      //                 <span class='username'>            <!--.firstChild-->
-      //                   <a href='http://3tdstudios.com/' target='_blank'>Ron Kapaun</a>
-      //                 </span>
-      //                 <br/>(Submitted by <strong><a href="/users/hreikin">hreikin</a></strong>)</div></div></div><div class="field field-name-post-date field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even">Thursday, November 6, 2014 - 13:08</div></div></div><div class="field field-name-field-art-type field-type-taxonomy-term-reference field-label-above"><div class="field-label">Art Type:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_type_tid%5B%5D=10" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">3D Art</a></div></div></div><div class="field field-name-field-art-tags field-type-taxonomy-term-reference field-label-above"><div class="field-label">Tags:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=torque" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">torque</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=dae" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">dae</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=furniture" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">furniture</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=bookshelf" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">bookshelf</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=china" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">china</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=hutch" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">hutch</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=cupboard" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">cupboard</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=Desk" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Desk</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">table</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=end%20table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">end table</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=square" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">square</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=workbench" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">workbench</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=prop" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">prop</a></div></div></div><div class="field field-name-field-art-licenses field-type-taxonomy-term-reference field-label-above"><div class="field-label">License(s):&nbsp;</div><div class="field-items"><div class="field-item even"><div class='license-icon'><a href='http://creativecommons.org/publicdomain/zero/1.0/' target='_blank'><img src='https://opengameart.org/sites/default/files/license_images/cc0.png' alt='' title=''><div class='license-name'>CC0</div></a></div></div></div></div><div class="field field-name-collect field-type-ds field-label-above"><div class="field-label">Collections:&nbsp;</div><div class="field-items"><div class="field-item even"><div class='collect-container'><ul><li><a href="/content/3d-packs">3D - Packs</a></li><li><a href="/content/3d-furniture-and-other-interiorexterior-decorables-under-cc0">3D Furniture and other interior/Exterior Decorables under CC0</a></li><li><a href="/content/3d-medieval-fantasy">3D Medieval Fantasy</a></li><li><a href="/content/3d-models">3D Models</a></li><li><a href="/content/3d-stuff-thangs">3D Stuff &amp; thangs</a></li><li><a href="/content/3td-studios-packs">3TD Studios Packs</a></li><li><a href="/content/arce-movens-2">Arce Movens 2</a></li><li><a href="/content/cc0-assets">CC0 Assets</a></li><li><a href="/content/cc0-assets-3d-low-poly">CC0 ASSETS 3D LOW POLY</a></li><li><a href="/content/cc0-furniture">CC0 Furniture</a></li><li><a href="/content/cco-3d-furniture">CCO 3D Furniture</a></li><li><a href="/content/dead-welcoming">Dead Welcoming</a></li><li><a href="/content/deco">Deco</a></li><li><a href="/content/freerpg-project-assets">FreeRPG Project Assets</a></li><li><a href="/content/game-project-models">Game Project Models</a></li><li><a href="/content/hq-items-interior">HQ Items Interior</a></li><li><a href="/content/legend-of-rathnor-parts">Legend of Rathnor Parts</a></li><li><a href="/content/low-poly-1">low poly</a></li><li><a href="/content/lr">LR</a></li><li><a href="/content/mysterious-sprites-and-housemansion-parts">Mysterious Sprites and House/Mansion Parts</a></li><li><a href="/content/openmw-showcase-possibilities">OpenMW showcase possibilities</a></li><li><a href="/content/torque3d-possible-modelstextures">Torque3D possible models/textures</a></li><li><a href="/content/turodas">Turodas</a></li></ul></div></div></div></div><div class="field field-name-favorites field-type-ds field-label-inline clearfix"><div class="field-label">Favorites:&nbsp;</div><div class="field-items"><div class="field-item even">23</div></div></div><div class="field field-name-flag-favorite field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even"><span class="flag-wrapper flag-favorites flag-favorites-30816">
-      // collaboratorElements.push(authorE);
-      if (authorAndSubmitterDivs[0].children[1].firstChild.children[2]) {
-        var textAfterBRNode = authorAndSubmitterDivs[0].children[1].firstChild.childNodes[2];
-        // ^ INFO: authorAndSubmitterDivs[0].children[1].firstChild.children[1].textContent is "" because a <br/> doesn't have textContent.
-        if (verbose) {
-          // console.log("author + opener for submitter: " + authorAndSubmitterDivs[0].children[1].firstChild.textContent);
-          console.log("A submitter opener was found: \"" + textAfterBRNode.textContent + "\"");
-        }
-        if (textAfterBRNode.textContent.includes("Submitted by")) {
-          var submittedByE = authorAndSubmitterDivs[0].children[1].firstChild.children[2].firstChild; // children[1] is field-items . firstChild is field-item even . children[2] is <strong> . firstChild is <a ...>
-          if (verbose) {
-              console.log("Submitted by:", submittedByE.textContent, "href=" + submittedByE.href)
-          }
-          info.submittedByE = submittedByE;
-        }
-        else {
-          if (verbose) {
-              console.log("There is no \"Submitted by\" in the", authorAncestorClassName, "children[1].firstChild.children[2]")
-          }
-        }
-      }
-      if (verbose) {
-        console.log("author: " + authorE.textContent, "href:", authorE.href);
-      }
-      // console.warn("Multiple authors (collaboratorElements) is not yet implemented.");
-      info.authorE = authorE;
-    }
-    else {
-      console.warn("The author is missing. There are no divs with a class " + authorAncestorClassName + " having a great grandchild of the second child");
-    }
 
-    var collaboratorDivs = document.getElementsByClassName(collaboratorsClassName);
-    if (collaboratorDivs.length > 0) {
-      info.collaboratorElements = collaboratorElements;
-      var goodCollaboratorsFlag = "Collaborators:";
-      if (collaboratorDivs[0].children.length >= 2) {
-        if (!collaboratorDivs[0].children[0].textContent.includes(goodCollaboratorsFlag)) {
-          console.warn("The first child of div class " + collaboratorsClassName + " does not say \"" + goodCollaboratorsFlag + "\"");
+
+    if (authorAncestorClassName) {
+      // such as opengameart format
+      var authorAndSubmitterDivs = document.getElementsByClassName(authorAncestorClassName);
+      var collaboratorElements = [];
+      if (authorAndSubmitterDivs.length > 0) {
+
+        if (!authorAndSubmitterDivs[0].children[0].textContent.includes(authorGreatUncleFlag)) {
+          console.warn("The first child of div class " + authorAncestorClassName + " should include \"" + authorGreatUncleFlag + "\" but is \"" + authorAndSubmitterDivs[0].children[0].textContent + "\"");
         }
-        var collaboratorsContainerE = collaboratorDivs[0].children[1];
-        var thisAuthorE = {};
-        for (var i=0, max=collaboratorsContainerE.children.length; i < max; i++) {
-          thisAuthorE = collaboratorsContainerE.children[i].firstChild; //firstChild of the <div ...> is <a ...>
-          //var tmpAuthorObj = {};
-          //tmpAuthorObj.textContent = thisAuthorE.textContent;
-          //tmpAuthorObj.href = thisAuthorE.href; // TODO: Why is this necessary (href is blank during iteration otherwise)?
+        var authorE = authorAndSubmitterDivs[0].children[1].firstChild.firstChild.firstChild;
+        // ^ such as on opengameart: <div class="field field-name-author-submitter field-type-ds field-label-above">
+        //             <div class="field-label">Author:&nbsp;</div>
+        //             <div class="field-items">              <!--children[1]-->
+        //               <div class="field-item even">        <!--.firstChild-->
+        //                 <span class='username'>            <!--.firstChild-->
+        //                   <a href='http://3tdstudios.com/' target='_blank'>Ron Kapaun</a>
+        //                 </span>
+        //                 <br/>(Submitted by <strong><a href="/users/hreikin">hreikin</a></strong>)</div></div></div><div class="field field-name-post-date field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even">Thursday, November 6, 2014 - 13:08</div></div></div><div class="field field-name-field-art-type field-type-taxonomy-term-reference field-label-above"><div class="field-label">Art Type:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_type_tid%5B%5D=10" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">3D Art</a></div></div></div><div class="field field-name-field-art-tags field-type-taxonomy-term-reference field-label-above"><div class="field-label">Tags:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=torque" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">torque</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=dae" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">dae</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=furniture" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">furniture</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=bookshelf" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">bookshelf</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=china" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">china</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=hutch" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">hutch</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=cupboard" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">cupboard</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=Desk" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Desk</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">table</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=end%20table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">end table</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=square" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">square</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=workbench" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">workbench</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=prop" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">prop</a></div></div></div><div class="field field-name-field-art-licenses field-type-taxonomy-term-reference field-label-above"><div class="field-label">License(s):&nbsp;</div><div class="field-items"><div class="field-item even"><div class='license-icon'><a href='http://creativecommons.org/publicdomain/zero/1.0/' target='_blank'><img src='https://opengameart.org/sites/default/files/license_images/cc0.png' alt='' title=''><div class='license-name'>CC0</div></a></div></div></div></div><div class="field field-name-collect field-type-ds field-label-above"><div class="field-label">Collections:&nbsp;</div><div class="field-items"><div class="field-item even"><div class='collect-container'><ul><li><a href="/content/3d-packs">3D - Packs</a></li><li><a href="/content/3d-furniture-and-other-interiorexterior-decorables-under-cc0">3D Furniture and other interior/Exterior Decorables under CC0</a></li><li><a href="/content/3d-medieval-fantasy">3D Medieval Fantasy</a></li><li><a href="/content/3d-models">3D Models</a></li><li><a href="/content/3d-stuff-thangs">3D Stuff &amp; thangs</a></li><li><a href="/content/3td-studios-packs">3TD Studios Packs</a></li><li><a href="/content/arce-movens-2">Arce Movens 2</a></li><li><a href="/content/cc0-assets">CC0 Assets</a></li><li><a href="/content/cc0-assets-3d-low-poly">CC0 ASSETS 3D LOW POLY</a></li><li><a href="/content/cc0-furniture">CC0 Furniture</a></li><li><a href="/content/cco-3d-furniture">CCO 3D Furniture</a></li><li><a href="/content/dead-welcoming">Dead Welcoming</a></li><li><a href="/content/deco">Deco</a></li><li><a href="/content/freerpg-project-assets">FreeRPG Project Assets</a></li><li><a href="/content/game-project-models">Game Project Models</a></li><li><a href="/content/hq-items-interior">HQ Items Interior</a></li><li><a href="/content/legend-of-rathnor-parts">Legend of Rathnor Parts</a></li><li><a href="/content/low-poly-1">low poly</a></li><li><a href="/content/lr">LR</a></li><li><a href="/content/mysterious-sprites-and-housemansion-parts">Mysterious Sprites and House/Mansion Parts</a></li><li><a href="/content/openmw-showcase-possibilities">OpenMW showcase possibilities</a></li><li><a href="/content/torque3d-possible-modelstextures">Torque3D possible models/textures</a></li><li><a href="/content/turodas">Turodas</a></li></ul></div></div></div></div><div class="field field-name-favorites field-type-ds field-label-inline clearfix"><div class="field-label">Favorites:&nbsp;</div><div class="field-items"><div class="field-item even">23</div></div></div><div class="field field-name-flag-favorite field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even"><span class="flag-wrapper flag-favorites flag-favorites-30816">
+        // collaboratorElements.push(authorE);
+        if (authorAndSubmitterDivs[0].children[1].firstChild.children[2]) {
+          var textAfterBRNode = authorAndSubmitterDivs[0].children[1].firstChild.childNodes[2];
+          // ^ INFO: authorAndSubmitterDivs[0].children[1].firstChild.children[1].textContent is "" because a <br/> doesn't have textContent.
           if (verbose) {
-            if (!thisAuthorE.href) {
-              console.warn("- collaborator " + thisAuthorE.textContent + " href is blank in addButton: \"" + thisAuthorE.href + "\"")
-            }
-            // else {
-              // console.warn("- collaborator " + thisAuthorE.textContent + " href is non-blank in addButton: \"" + thisAuthorE.href + "\"")
-            // }
+            // console.log("author + opener for submitter: " + authorAndSubmitterDivs[0].children[1].firstChild.textContent);
+            console.log("A submitter opener was found: \"" + textAfterBRNode.textContent + "\"");
           }
-          info.collaboratorElements.push(thisAuthorE);
+          if (textAfterBRNode.textContent.includes("Submitted by")) {
+            var submittedByE = authorAndSubmitterDivs[0].children[1].firstChild.children[2].firstChild; // children[1] is field-items . firstChild is field-item even . children[2] is <strong> . firstChild is <a ...>
+            if (verbose) {
+              console.log("Submitted by:", submittedByE.textContent, "href=" + submittedByE.href)
+            }
+            info.submittedByE = submittedByE;
+          }
+          else {
+            if (verbose) {
+              console.log("There is no \"Submitted by\" in the", authorAncestorClassName, "children[1].firstChild.children[2]")
+            }
+          }
         }
+        if (verbose) {
+          console.log("author: " + authorE.textContent, "href:", authorE.href);
+        }
+        // console.warn("Multiple authors (collaboratorElements) is not yet implemented.");
+        info.authorE = authorE;
       }
       else {
-        console.warn("div class " + collaboratorsClassName + " should have 2 children but has " + collaboratorDivs[0].children.length + ".");
+        console.warn("The author is missing. There are no divs with a class " + authorAncestorClassName + " having a great grandchild of the second child");
       }
     }
-    // ^ Such as in <div class="field field-name-field-collaborators field-type-user-reference field-label-above">
-    //                <div class="field-label">Collaborators:&nbsp;</div>
-    //                <div class="field-items">
-    //                  <div class="field-item even"><a href="/users/daneeklu">daneeklu</a></div>
-    //                  <div class="field-item odd"><a href="/users/jetrel">Jetrel</a></div>
-    //                  <div class="field-item even"><a href="/users/hyptosis">Hyptosis</a></div>
-    //                  <div class="field-item odd"><a href="/users/redshrike">Redshrike</a></div>
-    //                  <div class="field-item even"><a href="/users/bertram">Bertram</a></div></div>
-    //                </div>
+    else {
+      // such as blendswap.com format
+      var authorParents = getElementsWhereTextContentTrimStartsWith(authorParentTag, authorParentFlag);
+      for (var parentI=0, parentMax=authorParents.length; parentI < parentMax; parentI++) {
+        var authorParentE = authorParents[parentI];
+        for (var authorI=0, authorMax=authorParentE.children.length; authorI < authorMax; authorI++) {
+          if (authorParentE.children[authorI].tagName.toLowerCase() == authorTag.toLowerCase()) {
+            var authorStr = authorParentE.children[authorI].textContent.trim().substring(authorParentFlag.length).trim();
+            info.authorE = authorParentE.children[authorI];
+            info.authorE.textContent = authorStr;
+            break;
+          }
+        }
+        if (verbose) console.log(authorParentFlag + info.authorE.textContent);
+      }
+    }
+      var mediumTag = "li";
+      var mediumFlag = "Render: ";
+      var mediumTerm = "Render"; // Display this term for the information that was originally after mediumFlag.
+    if (programVersionTag && programVersionFlag) {
+      var programEls = getElementsWhereTextContentTrimStartsWith(programVersionTag, programVersionFlag);
+      if (programEls && (programEls.length > 0)) {
+        info[programVersionTerm] = programEls[0].textContent.trim().substring(programVersionFlag.length).trim();
+      }
+      if (programEls.length > 1) {
+        console.warn("WARNING: There were more than one "+programVersionTerm+" elements ("+programVersionTag+" containing \""+programVersionFlag+"\"");
+      }
+    }
+    if (mediumTag && mediumFlag) {
+      var mediumEls = getElementsWhereTextContentTrimStartsWith(mediumTag, mediumFlag);
+      if (mediumEls && (mediumEls.length > 0)) {
+        info[mediumTerm] = mediumEls[0].textContent.trim().substring(mediumFlag.length).trim();
+      }
+      if (mediumEls.length > 1) {
+        console.warn("WARNING: There were more than one "+mediumTerm+" elements ("+mediumTag+" containing \""+mediumFlag+"\"");
+      }
+    }
+    if (descriptionTag && descriptionClassName) {
+      var descriptionEls = getElementsByTagWhereClassStartsWith(descriptionTag, descriptionClassName);
+      if (descriptionEls && (descriptionEls.length > 0)) {
+        info.description = descriptionEls[0].textContent.trim();
+        var descriptionFlag = "Description:";
+        if (info.description.startsWith(descriptionFlag)) {
+          info.description = info.description.substring(descriptionFlag.length).trim();
+        }
+      }
+      if (descriptionEls.length > 1) {
+        console.warn("WARNING: There were more than one description elements (tagName "+descriptionTag+" where className starts with \""+descriptionClassName+"\"");
+      }
+    }
+    if (collaboratorsClassName) {
+      var collaboratorDivs = document.getElementsByClassName(collaboratorsClassName);
+      if (collaboratorDivs.length > 0) {
+        info.collaboratorElements = collaboratorElements;
+        var goodCollaboratorsFlag = "Collaborators:";
+        if (collaboratorDivs[0].children.length >= 2) {
+          if (!collaboratorDivs[0].children[0].textContent.includes(goodCollaboratorsFlag)) {
+            console.warn("The first child of div class " + collaboratorsClassName + " does not say \"" + goodCollaboratorsFlag + "\"");
+          }
+          var collaboratorsContainerE = collaboratorDivs[0].children[1];
+          var thisAuthorE = {};
+          for (var i=0, max=collaboratorsContainerE.children.length; i < max; i++) {
+            thisAuthorE = collaboratorsContainerE.children[i].firstChild; //firstChild of the <div ...> is <a ...>
+            //var tmpAuthorObj = {};
+            //tmpAuthorObj.textContent = thisAuthorE.textContent;
+            //tmpAuthorObj.href = thisAuthorE.href; // TODO: Why is this necessary (href is blank during iteration otherwise)?
+            if (verbose) {
+              if (!thisAuthorE.href) {
+                console.warn("- collaborator " + thisAuthorE.textContent + " href is blank in addButton: \"" + thisAuthorE.href + "\"")
+              }
+              // else {
+                // console.warn("- collaborator " + thisAuthorE.textContent + " href is non-blank in addButton: \"" + thisAuthorE.href + "\"")
+              // }
+            }
+            info.collaboratorElements.push(thisAuthorE);
+          }
+        }
+        else {
+          console.warn("div class " + collaboratorsClassName + " should have 2 children but has " + collaboratorDivs[0].children.length + ".");
+        }
+      }
+      // ^ Such as on opengameart: <div class="field field-name-field-collaborators field-type-user-reference field-label-above">
+      //                <div class="field-label">Collaborators:&nbsp;</div>
+      //                <div class="field-items">
+      //                  <div class="field-item even"><a href="/users/daneeklu">daneeklu</a></div>
+      //                  <div class="field-item odd"><a href="/users/jetrel">Jetrel</a></div>
+      //                  <div class="field-item even"><a href="/users/hyptosis">Hyptosis</a></div>
+      //                  <div class="field-item odd"><a href="/users/redshrike">Redshrike</a></div>
+      //                  <div class="field-item even"><a href="/users/bertram">Bertram</a></div></div>
+      //                </div>
 
-    // TODO: add artTypeStr
-    // ^ Such as in <div class="field field-name-field-art-type field-type-taxonomy-term-reference field-label-above">
-    //                <div class="field-label">Art Type:&nbsp;</div>
-    //                <div class="field-items">
-    //                  <div class="field-item even"><a href="/art-search-advanced?field_art_type_tid%5B%5D=9" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">2D Art</a></div></div></div><div class="field field-name-field-art-tags field-type-taxonomy-term-reference field-label-above"><div class="field-label">Tags:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=RPG" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">RPG</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=tiles" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">tiles</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=32x32" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">32x32</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=food" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">food</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=Wood" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Wood</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=Market%20Booth" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Market Booth</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=grass" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">grass</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=water" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">water</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=path" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">path</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=cobblestone" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">cobblestone</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=firewood" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">firewood</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">table</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=dock" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">dock</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=boat" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">boat</a></div></div></div><div class="field field-name-field-art-licenses field-type-taxonomy-term-reference field-label-above"><div class="field-label">License(s):&nbsp;</div><div class="field-items"><div class="field-item even"><div class='license-icon'><a href='http://creativecommons.org/licenses/by-sa/3.0/' target='_blank'><img src='https://opengameart.org/sites/default/files/license_images/cc-by-sa.png' alt='' title=''><div class='license-name'>CC-BY-SA 3.0</div></a></div></div></div></div><div class="field field-name-collect field-type-ds field-label-above"><div class="field-label">Collections:&nbsp;</div><div class="field-items"><div class="field-item even"><div class='collect-container'><ul><li><a href="/content/04-pixel-art-terrain">04. Pixel Art - Terrain</a></li><li><a href="/content/2-acetoxy-nnn-trimethylethanaminium">2-Acetoxy-N,N,N-trimethylethanaminium</a></li><li><a href="/content/2d-rpg-lpc-compatible-tilessprites">2D - RPG - [LPC]-Compatible Tiles/Sprites</a></li><li><a href="/content/2d-32x32">2D 32x32</a></li><li><a href="/content/2d-tilesets-topview">2D tilesets topview</a></li><li><a href="/content/2dtileorthogonal">2D::Tile::Orthogonal</a></li><li><a href="/content/32x32-fantasy-tiles">32x32 Fantasy Tiles</a></li><li><a href="/content/acid">Acid</a></li><li><a href="/content/andruil-rpg">Andruil RPG</a></li><li><a href="/content/art-used-in-dusk-graphical-mud">Art used in Dusk Graphical MUD</a></li><li><a href="/content/assets-for-planned-use-in-realm-of-kuhraiy">Assets for Planned Use in Realm of Kuhraiy</a></li><li><a href="/content/awesome-game-art">Awesome Game Art</a></li><li><a href="/content/backgrounds-6">BACKGROUNDS</a></li><li><a href="/content/base-pixel-art-for-3d-pixelish-rpg">Base pixel art for 3D pixelish RPG</a></li><li><a href="/content/besidethevoids-downloads">BesideTheVoid&#039;s Downloads</a> (<a href="/collect/remove/14914/85607" class="collect-remove">remove</a>)</li><li><a href="/content/best-orthogonal-rectangular-tilesets-for-tilemaps">Best Orthogonal (rectangular) Tilesets for Tilemaps</a></li><li><a href="/content/bits-and-bobs">Bits and Bobs</a></li><li><a href="/content/bunchofheroes">BunchOfHeroes</a></li><li><a href="/content/c-dogs-sdl-art">C-Dogs SDL art</a></li><li><a href="/content/conquest-rpg-assets">Conquest RPG Assets</a></li><li><a href="/content/credits-0">Credits</a></li><li><a href="/content/ctf">CTF</a></li><li><a href="/content/dungeon-slayer-art">Dungeon Slayer Art</a></li><li><a href="/content/fantasy-6">Fantasy</a></li><li><a href="/content/field-guardians">Field Guardians</a></li><li><a href="/content/game-prototype-art-assets">Game Prototype Art Assets </a></li><li><a href="/content/gamecollection">GameCollection</a></li><li><a href="/content/golden-axe">Golden Axe</a></li><li><a href="/content/hero-game">hero game</a></li><li><a href="/content/hq-2d-isometric">HQ 2D &amp; Isometric</a></li><li><a href="/content/infinimon-procedurally-generated-pokemon-or-digimon-style-game-assets">Infinimon - Procedurally-Generated Pokemon- or Digimon-style Game Assets</a></li><li><a href="/content/liberated-pixel-cup-0">Liberated Pixel Cup</a></li><li><a href="/content/long-licence-fantasy-modern-game">long licence fantasy modern game</a></li><li><a href="/content/loot-run">Loot run</a></li><li><a href="/content/lpc-1">LPC</a></li><li><a href="/content/lpc-compatible-terraintiles">LPC Compatible Terrain/Tiles</a></li><li><a href="/content/lpc-gfx">LPC GFX</a></li><li><a href="/content/maybe-assets-for-treasure-other">maybe assets for Treasure (+other)</a></li><li><a href="/content/medicines-disordered-list-of-fantasy-rpg-tilesets">Medicine&#039;s disordered list of Fantasy RPG Tilesets</a></li><li><a href="/content/minimmo-project">Minimmo project</a></li><li><a href="/content/mittys-maize">Mitty&#039;s Maize</a></li><li><a href="/content/must-use">Must Use</a></li><li><a href="/content/non-commercial-art">Non-Commercial - Art</a></li><li><a href="/content/oddball-gamez-lpc-style">Oddball Gamez LPC Style</a></li><li><a href="/content/one-click-minecraft">one click minecraft</a></li><li><a href="/content/pixelfarm">PixelFarm</a></li><li><a href="/content/roguelike">Roguelike</a></li><li><a href="/content/rpg-2">RPG</a></li><li><a href="/content/rpg-5">RPG</a></li><li><a href="/content/rpg-stuff-collection">RPG Stuff Collection</a></li><li><a href="/content/sets">SETS</a></li><li><a href="/content/smartpoints-example-game">SmartPoints Example Game</a></li><li><a href="/content/snes-style-rpg">SNES Style RPG</a></li><li><a href="/content/snes-like-world-textures">snes-like world textures</a></li><li><a href="/content/sprites-2">Sprites</a></li><li><a href="/content/stardont">stardont</a></li><li><a href="/content/stendhal">Stendhal</a></li><li><a href="/content/terrain-transitions">Terrain transitions</a></li><li><a href="/content/test-10">test</a></li><li><a href="/content/test-5">Test</a></li><li><a href="/content/test-11">test</a></li><li><a href="/content/the-weary-adventurer">The Weary Adventurer</a></li><li><a href="/content/thing">Thing</a></li><li><a href="/content/tile-4">TILE</a></li><li><a href="/content/tilesets-and-backgrounds-pixelart">Tilesets and Backgrounds (PixelArt)</a></li><li><a href="/content/top-down-2d-jrpg-32x32-art-collection">Top Down 2D JRPG 32x32 Art Collection</a></li><li><a href="/content/top-down-rpg-pixel-art">Top Down RPG Pixel Art</a></li><li><a href="/content/top-down-2d-rpg">Top-down 2D RPG</a></li><li><a href="/content/topdown-tiles">topdown tiles</a></li><li><a href="/content/trevas">Trevas</a></li><li><a href="/content/ultimate-tabletop">Ultimate TableTop</a></li><li><a href="/content/used-in-hero-of-allacrost">Used in Hero of Allacrost</a></li><li><a href="/content/used-in-valyria-tear">Used in Valyria tear</a></li><li><a href="/content/wastelander">Wastelander</a></li><li><a href="/content/workable-style-32x32-tiles">Workable style 32x32 tiles</a></li><li><a href="/content/zed-interesting-yet-unsorted">Zed - Interesting Yet Unsorted</a></li><li><a href="/content/zelda-like-rpg">Zelda Like RPG</a></li><li><a href="/content/zombie-buster-project">zombie-buster project</a></li></ul></div></div></div></div><div class="field field-name-favorites field-type-ds field-label-inline clearfix"><div class="field-label">Favorites:&nbsp;</div><div class="field-items"><div class="field-item even">235</div></div></div><div class="field field-name-flag-favorite field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even"><span class="flag-wrapper flag-favorites flag-favorites-14914">
+      // TODO: add artTypeStr
+      // ^ Such as on opengameart: <div class="field field-name-field-art-type field-type-taxonomy-term-reference field-label-above">
+      //                <div class="field-label">Art Type:&nbsp;</div>
+      //                <div class="field-items">
+      //                  <div class="field-item even"><a href="/art-search-advanced?field_art_type_tid%5B%5D=9" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">2D Art</a></div></div></div><div class="field field-name-field-art-tags field-type-taxonomy-term-reference field-label-above"><div class="field-label">Tags:&nbsp;</div><div class="field-items"><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=RPG" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">RPG</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=tiles" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">tiles</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=32x32" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">32x32</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=food" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">food</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=Wood" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Wood</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=Market%20Booth" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">Market Booth</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=grass" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">grass</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=water" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">water</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=path" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">path</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=cobblestone" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">cobblestone</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=firewood" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">firewood</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=table" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">table</a></div><div class="field-item even"><a href="/art-search-advanced?field_art_tags_tid=dock" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">dock</a></div><div class="field-item odd"><a href="/art-search-advanced?field_art_tags_tid=boat" typeof="skos:Concept" property="rdfs:label skos:prefLabel" datatype="">boat</a></div></div></div><div class="field field-name-field-art-licenses field-type-taxonomy-term-reference field-label-above"><div class="field-label">License(s):&nbsp;</div><div class="field-items"><div class="field-item even"><div class='license-icon'><a href='http://creativecommons.org/licenses/by-sa/3.0/' target='_blank'><img src='https://opengameart.org/sites/default/files/license_images/cc-by-sa.png' alt='' title=''><div class='license-name'>CC-BY-SA 3.0</div></a></div></div></div></div><div class="field field-name-collect field-type-ds field-label-above"><div class="field-label">Collections:&nbsp;</div><div class="field-items"><div class="field-item even"><div class='collect-container'><ul><li><a href="/content/04-pixel-art-terrain">04. Pixel Art - Terrain</a></li><li><a href="/content/2-acetoxy-nnn-trimethylethanaminium">2-Acetoxy-N,N,N-trimethylethanaminium</a></li><li><a href="/content/2d-rpg-lpc-compatible-tilessprites">2D - RPG - [LPC]-Compatible Tiles/Sprites</a></li><li><a href="/content/2d-32x32">2D 32x32</a></li><li><a href="/content/2d-tilesets-topview">2D tilesets topview</a></li><li><a href="/content/2dtileorthogonal">2D::Tile::Orthogonal</a></li><li><a href="/content/32x32-fantasy-tiles">32x32 Fantasy Tiles</a></li><li><a href="/content/acid">Acid</a></li><li><a href="/content/andruil-rpg">Andruil RPG</a></li><li><a href="/content/art-used-in-dusk-graphical-mud">Art used in Dusk Graphical MUD</a></li><li><a href="/content/assets-for-planned-use-in-realm-of-kuhraiy">Assets for Planned Use in Realm of Kuhraiy</a></li><li><a href="/content/awesome-game-art">Awesome Game Art</a></li><li><a href="/content/backgrounds-6">BACKGROUNDS</a></li><li><a href="/content/base-pixel-art-for-3d-pixelish-rpg">Base pixel art for 3D pixelish RPG</a></li><li><a href="/content/besidethevoids-downloads">BesideTheVoid&#039;s Downloads</a> (<a href="/collect/remove/14914/85607" class="collect-remove">remove</a>)</li><li><a href="/content/best-orthogonal-rectangular-tilesets-for-tilemaps">Best Orthogonal (rectangular) Tilesets for Tilemaps</a></li><li><a href="/content/bits-and-bobs">Bits and Bobs</a></li><li><a href="/content/bunchofheroes">BunchOfHeroes</a></li><li><a href="/content/c-dogs-sdl-art">C-Dogs SDL art</a></li><li><a href="/content/conquest-rpg-assets">Conquest RPG Assets</a></li><li><a href="/content/credits-0">Credits</a></li><li><a href="/content/ctf">CTF</a></li><li><a href="/content/dungeon-slayer-art">Dungeon Slayer Art</a></li><li><a href="/content/fantasy-6">Fantasy</a></li><li><a href="/content/field-guardians">Field Guardians</a></li><li><a href="/content/game-prototype-art-assets">Game Prototype Art Assets </a></li><li><a href="/content/gamecollection">GameCollection</a></li><li><a href="/content/golden-axe">Golden Axe</a></li><li><a href="/content/hero-game">hero game</a></li><li><a href="/content/hq-2d-isometric">HQ 2D &amp; Isometric</a></li><li><a href="/content/infinimon-procedurally-generated-pokemon-or-digimon-style-game-assets">Infinimon - Procedurally-Generated Pokemon- or Digimon-style Game Assets</a></li><li><a href="/content/liberated-pixel-cup-0">Liberated Pixel Cup</a></li><li><a href="/content/long-licence-fantasy-modern-game">long licence fantasy modern game</a></li><li><a href="/content/loot-run">Loot run</a></li><li><a href="/content/lpc-1">LPC</a></li><li><a href="/content/lpc-compatible-terraintiles">LPC Compatible Terrain/Tiles</a></li><li><a href="/content/lpc-gfx">LPC GFX</a></li><li><a href="/content/maybe-assets-for-treasure-other">maybe assets for Treasure (+other)</a></li><li><a href="/content/medicines-disordered-list-of-fantasy-rpg-tilesets">Medicine&#039;s disordered list of Fantasy RPG Tilesets</a></li><li><a href="/content/minimmo-project">Minimmo project</a></li><li><a href="/content/mittys-maize">Mitty&#039;s Maize</a></li><li><a href="/content/must-use">Must Use</a></li><li><a href="/content/non-commercial-art">Non-Commercial - Art</a></li><li><a href="/content/oddball-gamez-lpc-style">Oddball Gamez LPC Style</a></li><li><a href="/content/one-click-minecraft">one click minecraft</a></li><li><a href="/content/pixelfarm">PixelFarm</a></li><li><a href="/content/roguelike">Roguelike</a></li><li><a href="/content/rpg-2">RPG</a></li><li><a href="/content/rpg-5">RPG</a></li><li><a href="/content/rpg-stuff-collection">RPG Stuff Collection</a></li><li><a href="/content/sets">SETS</a></li><li><a href="/content/smartpoints-example-game">SmartPoints Example Game</a></li><li><a href="/content/snes-style-rpg">SNES Style RPG</a></li><li><a href="/content/snes-like-world-textures">snes-like world textures</a></li><li><a href="/content/sprites-2">Sprites</a></li><li><a href="/content/stardont">stardont</a></li><li><a href="/content/stendhal">Stendhal</a></li><li><a href="/content/terrain-transitions">Terrain transitions</a></li><li><a href="/content/test-10">test</a></li><li><a href="/content/test-5">Test</a></li><li><a href="/content/test-11">test</a></li><li><a href="/content/the-weary-adventurer">The Weary Adventurer</a></li><li><a href="/content/thing">Thing</a></li><li><a href="/content/tile-4">TILE</a></li><li><a href="/content/tilesets-and-backgrounds-pixelart">Tilesets and Backgrounds (PixelArt)</a></li><li><a href="/content/top-down-2d-jrpg-32x32-art-collection">Top Down 2D JRPG 32x32 Art Collection</a></li><li><a href="/content/top-down-rpg-pixel-art">Top Down RPG Pixel Art</a></li><li><a href="/content/top-down-2d-rpg">Top-down 2D RPG</a></li><li><a href="/content/topdown-tiles">topdown tiles</a></li><li><a href="/content/trevas">Trevas</a></li><li><a href="/content/ultimate-tabletop">Ultimate TableTop</a></li><li><a href="/content/used-in-hero-of-allacrost">Used in Hero of Allacrost</a></li><li><a href="/content/used-in-valyria-tear">Used in Valyria tear</a></li><li><a href="/content/wastelander">Wastelander</a></li><li><a href="/content/workable-style-32x32-tiles">Workable style 32x32 tiles</a></li><li><a href="/content/zed-interesting-yet-unsorted">Zed - Interesting Yet Unsorted</a></li><li><a href="/content/zelda-like-rpg">Zelda Like RPG</a></li><li><a href="/content/zombie-buster-project">zombie-buster project</a></li></ul></div></div></div></div><div class="field field-name-favorites field-type-ds field-label-inline clearfix"><div class="field-label">Favorites:&nbsp;</div><div class="field-items"><div class="field-item even">235</div></div></div><div class="field field-name-flag-favorite field-type-ds field-label-hidden"><div class="field-items"><div class="field-item even"><span class="flag-wrapper flag-favorites flag-favorites-14914">
+    }
 
     var submittedDateStr = null; // formerly createdStr
     // var headingCreatedParts = getDivsWhereClassStartsWith(headingCreatedPrefix);
     // var submittedDateDivs = document.getElementsByClassName(submittedDateGrandParentClassName);
     var submittedDateDivs = getElementsByTagWhereChildHasClass(dateTagName, "fa-calendar-alt");
-    /* ^ FontAwesom rewrites the HTML (!!):
+    /* ^ FontAwesome rewrites the HTML (!!):
      <li class="list-group-item"><i class="far fa-calendar-alt"
                             style="color:#40c057;margin-right: 0.25rem;"></i>
                         August 29, 2018</li>
@@ -1054,13 +1164,13 @@
     if (attributionAncestorElements.length < 1) {
         // The field is optional, so only warn if verbose.
         if (verbose) {
-            console.log("INFO: class \"" + attributionAncestorClassName + "\" is not present (This is an optional field).");
+            // console.log("INFO: class \"" + attributionAncestorClassName + "\" is not present (This is an optional field).");
         }
         attributionAncestorClassName = "field-name-field-art-attribution";
         attributionAncestorElements = document.getElementsByClassName(attributionAncestorClassName);
         if (attributionAncestorElements.length < 1) {
             if (verbose) {
-                console.log("INFO: class \"" + attributionAncestorClassName + "\" is not present (This is an optional field).");
+                // console.log("INFO: class \"" + attributionAncestorClassName + "\" is not present (This is an optional field).");
             }
             return info;
         }
@@ -1119,8 +1229,8 @@
       }
       var markdownStr = getMarkdown(info);
       var nyiMsg = "";
-      if (!info.blenderVersion) nyiMsg += "\n- Blender Version: "; // get list-group-item with textContent "Blender " // followed by version
-      if (!info.renderer) nyiMsg += "\n- Render: "; // get list-group-item with textContent "Render: " // followed by renderer
+      if (!info[programVersionTerm]) nyiMsg += "\n- "+programVersionTerm+" "; // get list-group-item with textContent "Blender " // followed by version
+      if (!info[mediumTerm]) nyiMsg += "\n- "+mediumTerm+": "; // get list-group-item with textContent "Render: " // followed by renderer
       if (!info.authorE || info.authorE.textContent.trim().length < 2) {
         nyiMsg += "\n- Author: ";
       }
