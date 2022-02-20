@@ -4,6 +4,7 @@
 // @version      1.0.6
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
+// @license MIT
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
 // @grant        none
 // @run-at       document-end
