@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.5
+// @version      1.0.6
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
@@ -1070,37 +1070,39 @@
           alert("Error in " + myName + ": \""+licenseStr+"\" is not a known license even in known parts of blendswaps incorrect CC name formatting so it can't be corrected.")
         }
         // urlSmallNames has url / and following as key and name as value:
-        licenseNoAnchor.href = undefined;
+        // licenseNoAnchor.href = undefined;
+        var licenseHref = undefined;
         for (const [tryKey, tryValue] of Object.entries(urlSmallNames)) {
           if (tryValue == correctedLicenseStr) {
-            licenseNoAnchor.href = tryKey;
+            licenseHref = tryKey; // Don't set licenseNoAnchor here or the partial URL will automatically get the BaseURL from the DOM!
             break;
           }
         }
-        if (licenseNoAnchor.href) {
-          if (!licenseNoAnchor.href.includes(":")) {
-            if (licenseNoAnchor.href.startsWith("/")) {
-              licenseNoAnchor.href = "https://creativecommons.org/licenses" + licenseNoAnchor.href;
+        if (licenseHref) {
+          if (!licenseHref.includes(":")) {
+            if (licenseHref.startsWith("/")) {
+              licenseHref = "https://creativecommons.org/licenses" + licenseHref;
             }
             else {
-              licenseNoAnchor.href = "https://" + licenseNoAnchor.href;
+              licenseHref = "https://" + licenseHref;
             }
           }
           // else has ":" so assume the href is correct now.
-          if (licenseNoAnchor.href.slice(-2, -1) == ".") { // -2 instead of -3 since using this scripts own URL substrings in the case that the URL is being generated
-            licenseNoAnchor.exactLicenseVersion = licenseNoAnchor.href.slice(-4, -1);
+          if (licenseHref.slice(-2, -1) == ".") { // -2 instead of -3 since using this scripts own URL substrings in the case that the URL is being generated
+            licenseNoAnchor.exactLicenseVersion = licenseHref.slice(-4, -1);
           }
           else {
-            console.warn("slice at -2 is not '.' but '" + licenseNoAnchor.href.slice(-2, -1) + "'. The license version seems to be malformed: \"" + licenseNoAnchor.href + "\"");
+            console.warn("slice at -2 is not '.' but '" + licenseHref.slice(-2, -1) + "'. The license version seems to be malformed: \"" + licenseHref + "\"");
           }
         }
         else {
           alert("Error in " + myName + ": urlSmallNames had no key with a value matching the license \""+correctedLicenseStr+"\".");
         }
         if (verbose) {
-          console.log("* writing license with href: " + licenseNoAnchor.href)
+          console.log("* writing license with href: " + licenseHref)
           console.log("  * with shortLicenseStr: " + licenseNoAnchor.shortLicenseStr)
         }
+        licenseNoAnchor.href = licenseHref;
         info.licenses.push(licenseNoAnchor);
         continue;
       }
