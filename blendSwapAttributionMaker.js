@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.4
+// @version      1.0.5
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
@@ -569,7 +569,7 @@
     }
 
     if (info.description) {
-      outputStr += "\n\nDescription:\n" + info.description + "\n";
+      outputStr += "\nDescription:\n" + info.description + "\n";
     }
 
     return outputStr;
