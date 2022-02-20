@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.2
+// @version      1.0.3
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @include      /^https?\:\/\/(www\.)?blendswap\.com\/blend\/.*/
@@ -871,9 +871,9 @@
         var authorParentE = authorParents[parentI];
         for (var authorI=0, authorMax=authorParentE.children.length; authorI < authorMax; authorI++) {
           if (authorParentE.children[authorI].tagName.toLowerCase() == authorTag.toLowerCase()) {
-            var authorStr = authorParentE.children[authorI].textContent.trim().substring(authorParentFlag.length).trim();
+            // var authorStr = authorParentE.children[authorI].textContent.trim().substring(authorParentFlag.length).trim();
             info.authorE = authorParentE.children[authorI];
-            info.authorE.textContent = authorStr;
+            // info.authorE.textContent = authorStr;
             break;
           }
         }
