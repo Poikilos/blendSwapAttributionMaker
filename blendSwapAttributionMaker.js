@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.7
+// @version      1.0.8
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @license MIT
@@ -34,6 +34,7 @@
   var authorClassName = "list-group-item";
   var authorHrefBaseUrl = "https://www.blendswap.com"; // such as for blendswap.com: Creator: <a href="/profile/918677">fatacuciocolata</a>
   var programVersionTag = "li";
+  var programVersionClass = "list-group-item"; // avoid <li><a class="dropdown-item" href="/blends/bversion/3.0x">Blender 3.0x</a> (one li for each version is on every model page!)
   var programVersionFlag = "Blender ";
   var programVersionTerm = "Blender"; // Display this term for the information that was originally after programVersionFlag.
   var mediumTag = "li";
@@ -192,10 +193,10 @@
     }
     return els;
   }
-  function getElementsWhereTextContentTrimStartsWith(tagName, str) {
+  function getElementsByTagAndContentTrimStart(tagName, str) {
     if (verbose) {
       // console.log("");
-      console.log("\ngetElementsWhereTextContentTrimStartsWith(\""+str+"\")...");
+      console.log("\n" + "getElementsByTagAndContentTrimStart(\""+str+"\")...");
     }
     var els = [];
     var all = document.getElementsByTagName(tagName);
@@ -222,6 +223,46 @@
       console.log("- FOUND " + els.length + " (" + all.length + " total)");
     }
     return els;
+  }
+  function reduceElementsByClass(all, className) {
+    if (verbose) {
+      console.log("- reduceElementsByClass...");
+    }
+    if (!all) {
+      if (verbose) {
+        console.log("  - The list is "+all+".");
+      }
+      return all;
+    }
+    if (!className) {
+      if (verbose) {
+        console.log("  - The list will not be reduced since there is no className in reduceElementsByClass.");
+      }
+      return all; // assume the setting is null on purpose
+    }
+    var els = [];
+    for (var i=0, max=all.length; i < max; i++) {
+      var el = all[i];
+      if (el.className == undefined) continue;
+      else if (typeof (el.className) != "string") {
+        // className type can be svg or path as opposed to string (WARNING:
+        // `<i` becomes `<svg` in FontAwesome!!)
+        if (verbose) {
+          if (tagName != "*") {
+              console.log("- typeof el.className is " + (typeof (el.className)) + " for tagName " + el.tagName)
+          }
+        }
+      }
+      // else if (el.textContent && el.textContent.trim().startsWith(str)) {
+      else if (el.classList && el.classList.contains(className)) {
+        els.push(el);
+      }
+    }
+    return els;
+  }
+  function getElementsByTagAndClassAndContentTrimStart(tagName, className, str) {
+    var more = getElementsByTagAndContentTrimStart(tagName, str);
+    return reduceElementsByClass(more, className);
   }
   function getElementsWhereClassStartsWith(str) {
     return getElementsByTagWhereClassStartsWith("*", str);
@@ -874,7 +915,7 @@
     }
     else {
       // such as blendswap.com format
-      var authorParents = getElementsWhereTextContentTrimStartsWith(authorParentTag, authorParentFlag);
+      var authorParents = getElementsByTagAndContentTrimStart(authorParentTag, authorParentFlag);
       for (var parentI=0, parentMax=authorParents.length; parentI < parentMax; parentI++) {
         var authorParentE = authorParents[parentI];
         for (var authorI=0, authorMax=authorParentE.children.length; authorI < authorMax; authorI++) {
@@ -892,7 +933,7 @@
       var mediumFlag = "Render: ";
       var mediumTerm = "Render"; // Display this term for the information that was originally after mediumFlag.
     if (programVersionTag && programVersionFlag) {
-      var programEls = getElementsWhereTextContentTrimStartsWith(programVersionTag, programVersionFlag);
+      var programEls = getElementsByTagAndClassAndContentTrimStart(programVersionTag, programVersionClass, programVersionFlag);
       if (programEls && (programEls.length > 0)) {
         info[programVersionTerm] = programEls[0].textContent.trim().substring(programVersionFlag.length).trim();
       }
@@ -901,7 +942,7 @@
       }
     }
     if (mediumTag && mediumFlag) {
-      var mediumEls = getElementsWhereTextContentTrimStartsWith(mediumTag, mediumFlag);
+      var mediumEls = getElementsByTagAndContentTrimStart(mediumTag, mediumFlag);
       if (mediumEls && (mediumEls.length > 0)) {
         info[mediumTerm] = mediumEls[0].textContent.trim().substring(mediumFlag.length).trim();
       }
