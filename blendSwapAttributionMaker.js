@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Blend Swap Attribution Maker
 // @namespace    http://poikilos.org/
-// @version      1.0.8
+// @version      1.0.9
 // @description  Format the information from a content page
 // @author       Poikilos (Jake Gustafson)
 // @license MIT
@@ -89,7 +89,7 @@
       "CC-BY-ND": "CC BY-ND 4.0",
       "CC-BY-NC-ND": "CC BY-NC-ND 4.0",
       "CC-0": "CC0 1.0",
-      "GAL 1.0": "GAL",
+      "GAL": "GAL 1.0",
   };
   var urlSmallNames = {
     "/by/1.0": "CC BY 1.0",
